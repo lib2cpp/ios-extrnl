@@ -1,0 +1,60 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Create Xcode project
+        run: |
+          mkdir -p ChessBot
+          mkdir -p "ChessBot Extension/Resources/stockfish"
+
+          # Копируем файлы расширения
+          cp ChessBotExtension/Resources/manifest.json "ChessBot Extension/Resources/"
+          cp ChessBotExtension/Resources/content.js    "ChessBot Extension/Resources/"
+          cp ChessBotExtension/Resources/background.js "ChessBot Extension/Resources/"
+          cp ChessBotExtension/Resources/popup.html    "ChessBot Extension/Resources/"
+
+          # Генерируем xcodeproj через ruby-скрипт
+          gem install xcodeproj --quiet
+          ruby generate_project.rb
+
+      - name: Build archive
+        run: |
+          xcodebuild \
+            -project ChessBot.xcodeproj \
+            -scheme ChessBot \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath $PWD/build/ChessBot.xcarchive \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Export IPA
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath $PWD/build/ChessBot.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath $PWD/build/ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChessBot-IPA
+          path: build/ipa/*.ipa
+          retention-days: 7
