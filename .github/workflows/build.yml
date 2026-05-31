@@ -16,7 +16,7 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      - name: Install xcodeproj gem
+      - name: Install dependencies
         run: gem install xcodeproj --quiet
 
       - name: Generate Xcode project
@@ -34,23 +34,36 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            | xcpretty || true
+            DEVELOPMENT_TEAM=""
 
-      - name: Package IPA manually
+      - name: Package IPA
         run: |
-          APP_PATH=$(find $PWD/build/ChessBot.xcarchive -name "*.app" | head -1)
-          echo "Found app: $APP_PATH"
-          mkdir -p $PWD/build/ipa/Payload
-          cp -r "$APP_PATH" $PWD/build/ipa/Payload/
-          cd $PWD/build/ipa
-          zip -r ChessBot.ipa Payload/
-          echo "IPA created successfully"
+          ARCHIVE=$PWD/build/ChessBot.xcarchive
+          APP_PATH=$(find "$ARCHIVE/Products" -name "*.app" | head -1)
+          echo "App found: $APP_PATH"
+
+          # Создаём структуру Payload
+          mkdir -p $PWD/build/Payload
+          cp -r "$APP_PATH" $PWD/build/Payload/ChessBot.app
+
+          # Добавляем fake entitlements чтобы eSign принял файл
+          /usr/libexec/PlistBuddy -c "Add :application-identifier string com.chessbot.app" \
+            $PWD/build/Payload/ChessBot.app/Info.plist 2>/dev/null || true
+
+          # Упаковываем
+          cd $PWD/build
+          zip -qry ChessBot.ipa Payload/
           ls -lh ChessBot.ipa
+          echo "Done"
+
+      - name: Verify IPA structure
+        run: |
+          cd $PWD/build
+          unzip -l ChessBot.ipa | head -20
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: ChessBot-IPA
-          path: build/ipa/ChessBot.ipa
+          path: build/ChessBot.ipa
           retention-days: 7
