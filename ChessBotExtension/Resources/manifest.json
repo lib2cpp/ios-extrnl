@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Chess Bot",
+  "version": "1.0",
+  "description": "Stockfish hints for chess.com",
+
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["*://www.chess.com/*"],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["*://www.chess.com/game/*", "*://www.chess.com/play/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "32": "icon32.png",
+      "64": "icon64.png"
+    }
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["stockfish/stockfish.js", "stockfish/stockfish.wasm", "arrow.js"],
+      "matches": ["*://www.chess.com/*"]
+    }
+  ]
+}

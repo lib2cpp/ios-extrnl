@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess Bot</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --gold: #c8a020;
+    --bg:   #0f0f0f;
+    --bg2:  #161616;
+    --bg3:  #1c1c1c;
+    --text: #e0e0e0;
+    --dim:  #555;
+    --green:#3ddc84;
+    --red:  #f06464;
+    --border:#222;
+  }
+
+  body {
+    font-family: 'Courier New', Courier, monospace;
+    background: var(--bg);
+    color: var(--text);
+    width: 280px;
+    border-top: 2px solid var(--gold);
+  }
+
+  /* Заголовок */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+  }
+  .title {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: bold;
+    letter-spacing: 3px; color: var(--gold);
+  }
+  .king { font-size: 18px; animation: float 3s ease-in-out infinite; }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+
+  /* Переключатель вкл/выкл */
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .toggle-label {
+    font-size: 9px; letter-spacing: 2px; color: var(--dim);
+  }
+  .toggle {
+    position: relative; width: 44px; height: 22px; cursor: pointer;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    transition: .3s;
+  }
+  .slider::before {
+    content: '';
+    position: absolute;
+    height: 14px; width: 14px;
+    left: 3px; bottom: 3px;
+    background: var(--dim);
+    transition: .3s;
+  }
+  input:checked + .slider { border-color: var(--gold); background: #1a1500; }
+  input:checked + .slider::before { transform: translateX(22px); background: var(--gold); }
+
+  /* Статус */
+  .status {
+    text-align: center;
+    padding: 8px 16px;
+    font-size: 9px; letter-spacing: 2px;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+    transition: color .3s;
+  }
+  .status.on  { color: var(--green); }
+  .status.off { color: var(--dim); }
+
+  /* Слайдер уровня */
+  .skill-section {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .skill-header {
+    display: flex; justify-content: space-between;
+    font-size: 9px; letter-spacing: 2px; color: var(--dim);
+    margin-bottom: 10px;
+  }
+  .skill-val { color: var(--gold); font-weight: bold; }
+
+  .track {
+    position: relative; height: 4px; background: #1a1a1a; cursor: pointer;
+  }
+  .fill {
+    height: 100%; background: var(--gold); transition: width .15s;
+    position: relative;
+  }
+  .fill::after {
+    content: '';
+    position: absolute; right: -1px; top: -4px;
+    width: 12px; height: 12px;
+    background: var(--gold);
+    border-radius: 50%;
+  }
+  input[type=range].range {
+    position: absolute; inset: -10px 0;
+    opacity: 0; cursor: pointer; width: 100%;
+  }
+
+  /* Подсказка */
+  .hint {
+    padding: 10px 16px;
+    font-size: 9px; line-height: 1.7;
+    color: #333;
+    border-bottom: 1px solid var(--border);
+  }
+  .hint b { color: var(--gold); font-weight: normal; }
+
+  /* Лог последнего хода */
+  .last-move {
+    padding: 10px 16px;
+    font-size: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .move-dot { width: 5px; height: 5px; background: var(--gold); border-radius: 50%; flex-shrink: 0; }
+  .move-txt { color: var(--dim); }
+  .move-val { color: var(--gold); letter-spacing: 1px; }
+
+  /* Футер */
+  .footer {
+    padding: 6px 16px;
+    font-size: 8px; letter-spacing: 1px; color: #252525;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="title">
+    <span class="king">♛</span>
+    <span>CHESS BOT</span>
+  </div>
+</div>
+
+<div class="toggle-row">
+  <span class="toggle-label">ПОДСКАЗКИ STOCKFISH</span>
+  <label class="toggle">
+    <input type="checkbox" id="toggle" checked>
+    <span class="slider"></span>
+  </label>
+</div>
+
+<div class="status on" id="status">● АКТИВЕН</div>
+
+<div class="skill-section">
+  <div class="skill-header">
+    <span>УРОВЕНЬ</span>
+    <span class="skill-val" id="skillVal">10</span>
+  </div>
+  <div class="track">
+    <div class="fill" id="fill" style="width:50%"></div>
+    <input type="range" class="range" id="slider" min="1" max="20" value="10" step="1">
+  </div>
+</div>
+
+<div class="hint">
+  Стрелка <b>золотого</b> цвета на доске показывает лучший ход.<br>
+  Кликай фигуру сам.
+</div>
+
+<div class="last-move">
+  <div class="move-dot"></div>
+  <span class="move-txt">ЛУЧШИЙ ХОД:</span>
+  <span class="move-val" id="lastMove">—</span>
+</div>
+
+<div class="footer">
+  <span>chess.com</span>
+  <span>STOCKFISH 16</span>
+</div>
+
+<script>
+const toggle   = document.getElementById('toggle');
+const status   = document.getElementById('status');
+const slider   = document.getElementById('slider');
+const fill     = document.getElementById('fill');
+const skillVal = document.getElementById('skillVal');
+const lastMove = document.getElementById('lastMove');
+
+// Загрузить сохранённые настройки
+chrome.storage.local.get(['enabled','level','lastMove'], (data) => {
+  const en = data.enabled ?? true;
+  const lv = data.level ?? 10;
+  toggle.checked = en;
+  updateStatus(en);
+  slider.value = lv;
+  updateSlider(lv);
+  if (data.lastMove) lastMove.textContent = data.lastMove.toUpperCase();
+});
+
+toggle.addEventListener('change', () => {
+  const en = toggle.checked;
+  updateStatus(en);
+  saveSettings();
+});
+
+slider.addEventListener('input', () => {
+  updateSlider(parseInt(slider.value));
+  saveSettings();
+});
+
+function updateStatus(en) {
+  status.className = 'status ' + (en ? 'on' : 'off');
+  status.textContent = en ? '● АКТИВЕН' : '○ ВЫКЛЮЧЕН';
+}
+
+function updateSlider(v) {
+  skillVal.textContent = v;
+  fill.style.width = ((v - 1) / 19 * 100) + '%';
+}
+
+function saveSettings() {
+  const settings = {
+    enabled: toggle.checked,
+    level: parseInt(slider.value)
+  };
+  chrome.storage.local.set(settings);
+  chrome.runtime.sendMessage({ type: 'SET_SETTINGS', ...settings });
+}
+
+// Слушаем обновление лучшего хода от content script
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.lastMove) {
+    lastMove.textContent = changes.lastMove.newValue.toUpperCase();
+  }
+});
+</script>
+</body>
+</html>
