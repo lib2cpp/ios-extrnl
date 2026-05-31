@@ -13,17 +13,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-
       - name: Install dependencies
         run: gem install xcodeproj --quiet
 
       - name: Generate Xcode project
         run: ruby generate_project.rb
 
+      - name: Create self-signed certificate
+        run: |
+          cat > cert.conf << 'CERTEOF'
+          [req]
+          default_bits = 2048
+          prompt = no
+          default_md = sha256
+          distinguished_name = dn
+          [dn]
+          CN = iPhone Developer
+          O = ChessBot
+          C = US
+          CERTEOF
+
+          openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem \
+            -days 365 -nodes -config cert.conf
+
+          openssl pkcs12 -export -out cert.p12 -inkey key.pem -in cert.pem \
+            -passout pass:chessbot123
+
+          security create-keychain -p chessbot123 build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p chessbot123 build.keychain
+          security import cert.p12 -k build.keychain -P chessbot123 \
+            -T /usr/bin/codesign -A
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k chessbot123 build.keychain
+          security find-identity -v build.keychain
+
       - name: Build archive
         run: |
+          CERT_ID=$(security find-identity -v build.keychain | \
+            grep -o '"[^"]*"' | head -1 | tr -d '"')
+          echo "Cert: $CERT_ID"
+
           xcodebuild \
             -project ChessBot.xcodeproj \
             -scheme ChessBot \
@@ -31,35 +61,41 @@ jobs:
             -sdk iphoneos \
             -archivePath $PWD/build/ChessBot.xcarchive \
             archive \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM=""
+            CODE_SIGN_IDENTITY="$CERT_ID" \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM="" \
+            OTHER_CODE_SIGN_FLAGS="--keychain build.keychain"
 
       - name: Package IPA
         run: |
           ARCHIVE=$PWD/build/ChessBot.xcarchive
-          APP_PATH=$(find "$ARCHIVE/Products" -name "*.app" | head -1)
-          echo "App found: $APP_PATH"
+          APP_PATH=$(find "$ARCHIVE/Products" -name "ChessBot.app" | head -1)
+          echo "App: $APP_PATH"
 
-          # Создаём структуру Payload
-          mkdir -p $PWD/build/Payload
-          cp -r "$APP_PATH" $PWD/build/Payload/ChessBot.app
+          CERT_ID=$(security find-identity -v build.keychain | \
+            grep -o '"[^"]*"' | head -1 | tr -d '"')
 
-          # Добавляем fake entitlements чтобы eSign принял файл
-          /usr/libexec/PlistBuddy -c "Add :application-identifier string com.chessbot.app" \
-            $PWD/build/Payload/ChessBot.app/Info.plist 2>/dev/null || true
+          # Подписываем extension (имя без пробела теперь)
+          APPEX=$(find "$APP_PATH/PlugIns" -name "*.appex" | head -1)
+          echo "Appex: $APPEX"
+          codesign --force --sign "$CERT_ID" \
+            --keychain build.keychain "$APPEX"
+
+          # Подписываем приложение
+          codesign --force --sign "$CERT_ID" \
+            --keychain build.keychain "$APP_PATH"
 
           # Упаковываем
+          mkdir -p $PWD/build/Payload
+          cp -r "$APP_PATH" $PWD/build/Payload/ChessBot.app
           cd $PWD/build
           zip -qry ChessBot.ipa Payload/
-          ls -lh ChessBot.ipa
-          echo "Done"
+          echo "IPA size: $(du -h ChessBot.ipa | cut -f1)"
 
-      - name: Verify IPA structure
-        run: |
-          cd $PWD/build
-          unzip -l ChessBot.ipa | head -20
+          # Проверяем структуру
+          echo "=== IPA contents ==="
+          unzip -l ChessBot.ipa | grep -E "\.app|\.appex|Info\.plist" | head -20
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
